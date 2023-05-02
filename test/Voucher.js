@@ -1,80 +1,114 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
 
-describe("Voucher", function() {
-  let Voucher, voucher, owner, pledger1, pledger2, user1, user2, relayer, addr1, addr2;
-  
-  beforeEach(async () => {
+describe("Voucher", function () {
+  let Voucher, voucher, accounts;
+
+  beforeEach(async function () {
     Voucher = await ethers.getContractFactory("Voucher");
-    [owner, pledger1, pledger2, user1, user2, relayer, addr1, addr2, _] = await ethers.getSigners();
-    
-    // Deploy the contract
+    [deployer, relayer, pledger1, pledger2, user1, user2, user3] = await ethers.getSigners();
     voucher = await Voucher.deploy(relayer.address);
     await voucher.deployed();
   });
 
-  it("Should set the correct relayer", async function() {
-    expect(await voucher.relayer()).to.equal(relayer.address);
+  it("Should allow pledgers to deposit and allocate vouchers", async function () {
+    // pledger1 deposits
+    await voucher.connect(pledger1).deposit({ value: ethers.utils.parseEther("5") });
+    expect(await voucher.balances(pledger1.address)).to.equal(ethers.utils.parseEther("5"));
+
+    // pledger1 adds vouchers
+    const tx = await voucher.connect(pledger1).addVouchers([ethers.utils.parseEther("1"), ethers.utils.parseEther("1")]);
+    const receipt = await tx.wait();
+    const event = receipt.events?.filter((x) => {return x.event == "VouchersAdded";})[0];
+    const voucherCodesPledger1 = event.args.voucherCodes;
+    console.log(voucherCodesPledger1);
+    // Check that vouchers were created and balances were deducted
+    for (let code of voucherCodesPledger1) {
+      expect(await voucher.vouchers(code)).to.equal(ethers.utils.parseEther("1"));
+    }
+    expect(await voucher.balances(pledger1.address)).to.equal(0);
+
+    // pledger2 deposits and adds vouchers
+    await voucher.connect(pledger2).deposit({ value: ethers.utils.parseEther("2") });
+    const voucherCodesPledger2 = await voucher.connect(pledger2).addVouchers([
+      ethers.utils.parseEther("1"),
+      ethers.utils.parseEther("1"),
+    ]);
+
+    // Check that vouchers were created and balances were deducted
+    for (let code of voucherCodesPledger2) {
+      expect(await voucher.vouchers(code)).to.equal(ethers.utils.parseEther("1"));
+    }
+    expect(await voucher.balances(pledger2.address)).to.equal(0);
   });
 
-  it("Should allow pledgers to deposit and allocate vouchers", async function() {
-    // Pledger1 deposits
+  it("Should allow relayer to send vouchers", async function () {
+    // Deposit and add vouchers
     await voucher.connect(pledger1).deposit({ value: ethers.utils.parseEther("2") });
-    expect(await voucher.balances(pledger1.address)).to.equal(ethers.utils.parseEther("2"));
-
-    // Pledger1 allocates vouchers
-    await voucher.connect(pledger1).addVouchers(["code1", "code2"], [ethers.utils.parseEther("1"), ethers.utils.parseEther("1")]);
-    expect(await voucher.vouchers("code1")).to.equal(ethers.utils.parseEther("1"));
-    expect(await voucher.vouchers("code2")).to.equal(ethers.utils.parseEther("1"));
-  });
-
-  it("Should allow pledgers to approve claimants", async function() {
-    // Pledger1 deposits
-    await voucher.connect(pledger1).deposit({ value: ethers.utils.parseEther("2") });
-
-    // Pledger1 allocates vouchers
-    await voucher.connect(pledger1).addVouchers(["code1", "code2"], [ethers.utils.parseEther("1"), ethers.utils.parseEther("1")]);
-
-    // Pledger1 approves claimants
-    await voucher.connect(pledger1).approveClaimants(["code1", "code2"], [user1.address, user2.address]);
-    expect(await voucher.approvedClaimants("code1")).to.equal(user1.address);
-    expect(await voucher.approvedClaimants("code2")).to.equal(user2.address);
-  });
-
-  it("Should allow relayer to send vouchers", async function() {
-    // Pledger1 deposits
-    await voucher.connect(pledger1).deposit({ value: ethers.utils.parseEther("2") });
-
-    // Pledger1 allocates vouchers
-    await voucher.connect(pledger1).addVouchers(["code1", "code2"], [ethers.utils.parseEther("1"), ethers.utils.parseEther("1")]);
-
-    // Pledger1 approves claimants
-    await voucher.connect(pledger1).approveClaimants(["code1", "code2"], [user1.address, user2.address]);
+    const voucherCodesPledger1 = await voucher.connect(pledger1).addVouchers([
+      ethers.utils.parseEther("1"),
+      ethers.utils.parseEther("1"),
+    ]);
+    console.log(voucherCodesPledger1);
+    // Approve users as claimants
+    await voucher.connect(pledger1).approveClaimants([user1.address, user2.address], voucherCodesPledger1);
 
     // Relayer sends vouchers
-    await voucher.connect(relayer).sendVouchers(["code1", "code2"], [user1.address, user2.address]);
+    await voucher.connect(relayer).sendVouchers([user1.address, user2.address], voucherCodesPledger1);
 
+    // Check that vouchers have been claimed and claimants received the funds
+    for (let code of voucherCodesPledger1) {
+      expect(await voucher.vouchers(code)).to.equal(0);
+    }
     expect(await ethers.provider.getBalance(user1.address)).to.equal(ethers.utils.parseEther("1"));
-        // Continued from last test
-        expect(await ethers.provider.getBalance(user2.address)).to.equal(ethers.utils.parseEther("1"));
-        expect(await voucher.vouchers("code1")).to.equal(0);
-        expect(await voucher.vouchers("code2")).to.equal(0);
-      });
-    
-  it("Should revoke the PLEDGER_ROLE when all their vouchers have been claimed", async function() {
-    // Pledger1 deposits
+    expect(await ethers.provider.getBalance(user2.address)).to.equal(ethers.utils.parseEther("1"));
+  });
+
+  it("Should reimburse relayer for gas fees", async function () {
+    // Deposit and add vouchers
     await voucher.connect(pledger1).deposit({ value: ethers.utils.parseEther("2") });
+    const voucherCodesPledger1 = await voucher.connect(pledger1).addVouchers([
+        ethers.utils.parseEther("1"),
+        ethers.utils.parseEther("1"),
+    ]);
 
-    // Pledger1 allocates vouchers
-    await voucher.connect(pledger1).addVouchers(["code1", "code2"], [ethers.utils.parseEther("1"), ethers.utils.parseEther("1")]);
+    // Approve users as claimants
+    await voucher.connect(pledger1).approveClaimants([user1.address, user2.address], voucherCodesPledger1);
 
-    // Pledger1 approves claimants
-    await voucher.connect(pledger1).approveClaimants(["code1", "code2"], [user1.address, user2.address]);
+    // Save relayer balance before sending vouchers
+    const initialRelayerBalance = await ethers.provider.getBalance(relayer.address);
 
     // Relayer sends vouchers
-    await voucher.connect(relayer).sendVouchers(["code1", "code2"], [user1.address, user2.address]);
+    const tx = await voucher.connect(relayer).sendVouchers([user1.address, user2.address], voucherCodesPledger1);
+    const receipt = await tx.wait();
+    const gasUsed = receipt.gasUsed;
 
-    expect(await voucher.hasRole(voucher.PLEDGER_ROLE(), pledger1.address)).to.be.false;
-  });
+    // Check that relayer was reimbursed for gas fees
+    const finalRelayerBalance = await ethers.provider.getBalance(relayer.address);
+    expect(finalRelayerBalance).to.be.above(initialRelayerBalance);
 });
 
+it("Should not allow non-relayers to get reimbursed for gas fees", async function () {
+    // Deposit and add vouchers
+    await voucher.connect(pledger1).deposit({ value: ethers.utils.parseEther("2") });
+    const voucherCodesPledger1 = await voucher.connect(pledger1).addVouchers([
+        ethers.utils.parseEther("1"),
+        ethers.utils.parseEther("1"),
+    ]);
+
+    // Approve users as claimants
+    await voucher.connect(pledger1).approveClaimants([user1.address, user2.address], voucherCodesPledger1);
+
+    // Save pledger1 balance before sending vouchers
+    const initialPledger1Balance = await ethers.provider.getBalance(pledger1.address);
+
+    // Pledger1 sends vouchers
+    const tx = await voucher.connect(pledger1).sendVouchers([user1.address, user2.address], voucherCodesPledger1);
+    const receipt = await tx.wait();
+    const gasUsed = receipt.gasUsed;
+
+    // Check that pledger1 was not reimbursed for gas fees
+    const finalPledger1Balance = await ethers.provider.getBalance(pledger1.address);
+    expect(finalPledger1Balance).to.be.below(initialPledger1Balance);
+});
+
+});
