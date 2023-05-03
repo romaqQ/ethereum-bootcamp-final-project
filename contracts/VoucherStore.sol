@@ -3,15 +3,24 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Voucher is AccessControl, Ownable {
+contract VoucherStore is AccessControl, Ownable {
     bytes32 public constant PLEDGER_ROLE = keccak256("PLEDGER_ROLE");
     bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
     address public relayer;
     uint32 public fee = 250; // 2.5% fee in bps
-    mapping(bytes32 => uint256) vouchers;
-    mapping(bytes32 => address) approvedClaimants;
-    mapping(address => uint256) balances;
-    mapping(address => uint256) public activeVoucherCount;
+    
+    struct Pledger {
+        uint256 balance;
+        uint32 nVouchers;
+    }
+    struct Voucher {
+        uint256 amount;
+        address claimant;
+        address pledger;
+    }
+
+    mapping(address => Pledger) pledgers;
+    mapping(bytes32 => Voucher) vouchers;
 
     event VoucherCreated(address pledger, bytes32 code, uint256 amount);
     event VoucherClaimed(bytes32 code, address claimant);
@@ -36,9 +45,9 @@ contract Voucher is AccessControl, Ownable {
     }
 
 
-    modifier onlyRelayerOrPledger() {
-        require(hasRole(RELAYER_ROLE, msg.sender) || hasRole(PLEDGER_ROLE, msg.sender), "Caller is not a relayer or pledger");
+    modifier onlyRelayerOrPledger() { 
         uint256 initialGas = gasleft();
+        require(hasRole(RELAYER_ROLE, msg.sender) || hasRole(PLEDGER_ROLE, msg.sender), "Caller is not a relayer or pledger");
         _;
         (bool sent, ) = payable(msg.sender).call{value:(initialGas - gasleft()) * tx.gasprice}("");
         require(sent, "Gas fee reimbursement failed");
@@ -46,13 +55,18 @@ contract Voucher is AccessControl, Ownable {
 
 
     function deposit() public payable {
-        require(msg.value > 0.1 ether, "Value sent must be greater than 0.1 ether");
+        require(msg.value > 0.2 ether, "Value sent must be greater than 0.2 ether");
         if (!hasRole(PLEDGER_ROLE, msg.sender)) {
             _grantRole(PLEDGER_ROLE, msg.sender);
         }
         // adjust balance for fee (which is used for gas reimbursement and also incentive for relayer / voucher service)
         uint256 feeAmount = msg.value * uint256(fee) / 10_000;
-        balances[msg.sender] = balances[msg.sender] + msg.value - feeAmount;
+        // check if the pledger has been added to the pledgers mapping
+        if (pledgers[msg.sender].balance == 0) {
+            pledgers[msg.sender].balance = msg.value - feeAmount;
+        } else {
+            pledgers[msg.sender].balance = pledgers[msg.sender].balance + msg.value - feeAmount;
+        }
     }
 
 
@@ -79,23 +93,27 @@ contract Voucher is AccessControl, Ownable {
 
 
     function addVouchers(uint256[] calldata _amounts) public onlyPledger {
-        require(checkArraySum(_amounts) <= balances[msg.sender], "Not enough balance to add vouchers");
+        Pledger storage pledger = pledgers[msg.sender];
+        uint256 balance = pledger.balance;
+        require(checkArraySum(_amounts) <= pledger.balance, "Not enough balance to add vouchers");
         for(uint256 i = 0; i < _amounts.length; ++i) {
             bytes32 codeHash = keccak256(abi.encodePacked(_amounts[i], msg.sender, block.timestamp, i));
             bytes32 voucherCode = bytes32(codeHash << 224); // take right most 64 bits (8bytes) of hash
-            vouchers[voucherCode] = _amounts[i];
-            balances[msg.sender] -= _amounts[i];
+            vouchers[voucherCode] = Voucher(_amounts[i], address(0), msg.sender);
+            balance -= _amounts[i];
             emit VoucherCreated(msg.sender, voucherCode, _amounts[i]);
         }
+        pledgers[msg.sender].balance = balance;
+        pledgers[msg.sender].nVouchers += uint32(_amounts.length);
     }
 
 
-    function viewBalance(address _address) public view onlyPledger returns (uint256) {
-        return balances[_address];
+    function viewPledger(address _address) public view returns (Pledger memory) {
+        return pledgers[_address];
     }
 
 
-    function viewVoucher(bytes32 _code) public view onlyPledger returns (uint256) {
+    function viewVoucher(bytes32 _code) public view returns (Voucher memory) {
         return vouchers[_code];
     }
 
@@ -103,19 +121,20 @@ contract Voucher is AccessControl, Ownable {
     function approveClaimants(bytes32[] memory _codes, address[] memory _claimants) public onlyRelayerOrPledger {
         require(_codes.length == _claimants.length, "Codes and claimants must be the same length");
         for (uint256 i = 0; i < _codes.length; ++i) {
-            require(vouchers[_codes[i]] > 0, "Voucher code does not exist");
-            approvedClaimants[_codes[i]] = _claimants[i];
+            require(vouchers[_codes[i]].amount > 0, "Voucher code does not exist");
+            vouchers[_codes[i]].claimant = _claimants[i];
         }
     }
 
     // ToDo: add a check to make sure the claimant is not a contract
     function claimVoucher(bytes32 code) public {
-        require(vouchers[code] > 0, "Voucher code does not exist");
-        require(approvedClaimants[code] == msg.sender, "Claimant is not approved");
-        uint256 amount = vouchers[code];
-        vouchers[code] = 0;
-        (bool sent, ) = payable(msg.sender).call{value:amount}("");
+        require(vouchers[code].amount > 0, "Voucher code does not exist");
+        require(vouchers[code].claimant == msg.sender, "Claimant is not approved");
+        Voucher storage voucher = vouchers[code];
+        (bool sent, ) = payable(msg.sender).call{value:voucher.amount}("");
         require(sent, "Voucher claim failed");
+        voucher.amount = 0;
+        pledgers[voucher.pledger].nVouchers -= 1;
         emit VoucherClaimed(code, msg.sender);
     }
 
@@ -128,9 +147,12 @@ contract Voucher is AccessControl, Ownable {
         uint256 nonZeroVoucherCount = 0;
         uint256 zeroBalanceCount = 0;
         for (uint256 i = 0; i < _recipients.length; i++) {
-            if (vouchers[_codes[i]] > 0) {
-                amounts[i] = vouchers[_codes[i]];
-                vouchers[_codes[i]] = 0;
+            Voucher storage voucher = vouchers[_codes[i]];
+            if (voucher.amount > 0) {
+                amounts[i] = voucher.amount;
+                voucher.amount = 0;
+                pledgers[voucher.pledger].nVouchers -= 1;
+
                 ++nonZeroVoucherCount;
                 if(address(_recipients[i]).balance == 0) {
                     ++zeroBalanceCount;
