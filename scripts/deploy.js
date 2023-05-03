@@ -1,21 +1,17 @@
 const hre = require("hardhat");
 
 async function main() {
-  const [deployer, relayer] = await ethers.getSigners();
+  const [deployer] = await hre.ethers.getSigners();
+  console.log("Deploying contracts with the account:", deployer.address);
 
-  console.log(
-    "Deploying contracts with the account:",
-    deployer.address
-  );
+  const relayer = deployer.address; // set the relayer address as needed
 
-  console.log("Account balance:", (await deployer.getBalance()).toString());
+  const VoucherStore = await hre.ethers.getContractFactory("VoucherStore");
+  const voucherStore = await VoucherStore.deploy(relayer);
 
-  const Voucher = await hre.ethers.getContractFactory("Voucher");
-  const voucher = await Voucher.deploy(relayer.address);
+  await voucherStore.deployed();
 
-  await voucher.deployed();
-
-  console.log("Voucher contract deployed to:", voucher.address);
+  console.log("VoucherStore deployed to:", voucherStore.address);
 }
 
 main()
