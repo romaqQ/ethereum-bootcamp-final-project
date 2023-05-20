@@ -50,13 +50,13 @@ const StyledButton = styled.button`
 export function Voucher(): ReactElement {
   const context = useWeb3React<Provider>();
   const { library, active } = context;
-
+  var url = "http://localhost:8545";
+  var provider = new ethers.providers.JsonRpcProvider(url);
   const [signer, setSigner] = useState<Signer>();
   const [voucherStoreContract, setVoucherStoreContract] = useState<Contract>();
   const [voucherStoreContractAddr, setVoucherStoreContractAddr] =
     useState<string>("");
-  // const [greeting, setGreeting] = useState<string>('');
-  // const [greetingInput, setGreetingInput] = useState<string>('');
+  const [depositAmount, setDepositAmount] = useState<string>("");
 
   useEffect((): void => {
     if (!library) {
@@ -67,21 +67,23 @@ export function Voucher(): ReactElement {
     setSigner(library.getSigner());
   }, [library]);
 
-  // useEffect((): void => {
-  //   if (!voucherStoreContract) {
-  //     return;
-  //   }
+  async function getDepositAmount(): Promise<void> {
+    const _amount = (
+      await provider.getBalance(voucherStoreContractAddr)
+    ).toString();
+    console.log("_amount", _amount);
+    if (_amount !== _amount) {
+      setDepositAmount(_amount);
+    }
+  }
 
-  //   async function getGreeting(greeterContract: Contract): Promise<void> {
-  //     const _greeting = await greeterContract.greet();
+  useEffect((): void => {
+    if (!voucherStoreContract) {
+      return;
+    }
 
-  //     if (_greeting !== greeting) {
-  //       setGreeting(_greeting);
-  //     }
-  //   }
-
-  //   getGreeting(voucherContract);
-  // }, [voucherContract, greeting]);
+    getDepositAmount();
+  }, [voucherStoreContract, depositAmount, voucherStoreContractAddr]);
 
   function handleDeployContract(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -123,45 +125,28 @@ export function Voucher(): ReactElement {
     deployVoucherStoreContract(signer);
   }
 
-  // function handleGreetingChange(event: ChangeEvent<HTMLInputElement>): void {
-  //   event.preventDefault();
-  //   setGreetingInput(event.target.value);
-  // }
+  async function handleDeposit() {
+    if (!voucherStoreContract) {
+      window.alert("Undefined greeterContract");
+      return;
+    }
+    try {
+      let tx = await voucherStoreContract.deposit({
+        value: ethers.utils.parseEther(depositAmount),
+      });
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+  }
 
-  // function handleGreetingSubmit(event: MouseEvent<HTMLButtonElement>): void {
-  //   event.preventDefault();
-
-  //   if (!voucherContract) {
-  //     window.alert("Undefined greeterContract");
-  //     return;
-  //   }
-
-  //   if (!greetingInput) {
-  //     window.alert("Greeting cannot be empty");
-  //     return;
-  //   }
-
-  //   async function submitGreeting(greeterContract: Contract): Promise<void> {
-  //     try {
-  //       const setGreetingTxn = await greeterContract.setGreeting(greetingInput);
-
-  //       await setGreetingTxn.wait();
-
-  //       const newGreeting = await greeterContract.greet();
-  //       window.alert(`Success!\n\nGreeting is now: ${newGreeting}`);
-
-  //       if (newGreeting !== greeting) {
-  //         setGreeting(newGreeting);
-  //       }
-  //     } catch (error: any) {
-  //       window.alert(
-  //         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
-  //       );
-  //     }
-  //   }
-
-  //   submitGreeting(voucherContract);
-  // }
+  function handleDepositAmountChange(
+    event: ChangeEvent<HTMLInputElement>
+  ): void {
+    event.preventDefault();
+    setDepositAmount(event.target.value);
+  }
 
   return (
     <>
@@ -186,19 +171,19 @@ export function Voucher(): ReactElement {
           )}
         </div>
         {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
-        <div></div>
-        <StyledLabel>Current greeting</StyledLabel>
+        {/* <div></div>
+        <StyledLabel></StyledLabel>
         <div>
           {"greeting" ? "greeting" : <em>{`<Contract not yet deployed>`}</em>}
-        </div>
+        </div> */}
         {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
         <div></div>
-        <StyledLabel htmlFor="greetingInput">Set new greeting</StyledLabel>
+        <StyledLabel htmlFor="depositAmount">Set deposit amount</StyledLabel>
         <StyledInput
-          id="greetingInput"
+          id="depositAmount"
           type="text"
-          placeholder={"greeting" ? "" : "<Contract not yet deployed>"}
-          style={{ fontStyle: "greeting" ? "normal" : "italic" }}
+          onChange={handleDepositAmountChange}
+          placeholder="Set deposit Amount"
         ></StyledInput>
         <StyledButton
           disabled={!active || !voucherStoreContract ? true : false}
@@ -207,10 +192,21 @@ export function Voucher(): ReactElement {
               !active || !voucherStoreContract ? "not-allowed" : "pointer",
             borderColor: !active || !voucherStoreContract ? "unset" : "blue",
           }}
+          onClick={handleDeposit}
         >
           Submit
         </StyledButton>
       </StyledGreetingDiv>
+      <StyledButton
+        disabled={!active || !voucherStoreContract ? true : false}
+        style={{
+          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
+          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+        }}
+        onClick={getDepositAmount}
+      >
+        Submit
+      </StyledButton>
     </>
   );
 }
