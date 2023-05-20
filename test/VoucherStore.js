@@ -42,15 +42,37 @@ describe('VoucherStore', function() {
 
   describe('Vouchers', function() {
     it('Should allow pledger to add vouchers', async function() {
-      // TODO: tests for addVouchers
+        const amounts = [ethers.utils.parseEther('1'), ethers.utils.parseEther('2')];
+        await voucherStore.connect(addr1).deposit({value: ethers.utils.parseEther('5')});
+        const tx = await voucherStore.connect(addr1).addVouchers(amounts);
+        const receipt = await tx.wait();
+        // VoucherCreated Events in the tx
+        const voucherCreatedEvents = receipt.events?.filter((x) => x.event === "VoucherCreated") || [];
     });
 
     it('Should allow operator to send vouchers', async function() {
-      // TODO: tests for sendVouchers
+        const amounts = [ethers.utils.parseEther('1')];
+        await voucherStore.connect(addr1).deposit({value: ethers.utils.parseEther('5')});
+        const tx = await voucherStore.connect(addr1).addVouchers(amounts);
+        let receipt = await tx.wait();
+        let voucherCodes = receipt.events?.filter((x) => x.event === "VoucherCreated").map((x) => x.args?.code) || [];
+        const tx2 = await voucherStore.connect(operator).sendVouchers([addr2.address], voucherCodes);
+        receipt = await tx2.wait();
+        // VoucherSent Events in the tx
+        const voucherSentEvents = receipt.events?.filter((x) => x.event === "VoucherSent") || [];
     });
 
     it('Should allow pledger to reclaim vouchers', async function() {
-      // TODO: tests for reclaimVouchers
+        const amounts = [ethers.utils.parseEther('1')];
+        await voucherStore.connect(addr1).deposit({value: ethers.utils.parseEther('5')});
+        let tx = await voucherStore.connect(addr1).addVouchers(amounts);
+        let receipt = await tx.wait();
+        let voucherCodes = receipt.events?.filter((x) => x.event === "VoucherCreated").map((x) => x.args?.code) || [];
+        await voucherStore.connect(operator).sendVouchers([addr2.address], voucherCodes);
+        const tx2 = await voucherStore.connect(addr1).reclaimVouchers(voucherCodes);
+        receipt = await tx2.wait();
+        // VoucherReclaimed events in the tx
+        const voucherReclaimedEvents = receipt.events?.filter((x) => x.event === "VoucherReclaimed") || [];
     });
   });
 });

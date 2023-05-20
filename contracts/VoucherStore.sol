@@ -21,9 +21,9 @@ contract VoucherStore is AccessControl, Ownable {
     mapping(address => Pledger) pledgers;
     mapping(bytes32 => Voucher) vouchers;
 
-    event VoucherCreated(address pledger, bytes32 code, uint256 amount);
-    event VoucherSent(bytes32 code, address receiver);
-    event VoucherReclaimed(bytes32 code);
+    event VoucherCreated(address indexed pledger, bytes32 code, uint256 amount);
+    event VoucherSent(bytes32 indexed code, address indexed receiver);
+    event VoucherReclaimed(bytes32 indexed code);
 
     constructor(address _operator) {
         // set owner to msg.sender
