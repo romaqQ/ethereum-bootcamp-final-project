@@ -21,6 +21,7 @@
   "dependencies": {
     "@openzeppelin/contracts": "^4.8.3",
     "alchemy-sdk": "^2.8.1",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.0.3",
+    "json-server": "^0.17.3"
   }
 }

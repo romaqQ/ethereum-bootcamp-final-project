@@ -29,6 +29,8 @@ const StyledGreetingDiv = styled.div`
   place-self: center;
   align-items: center;
 `;
+// 0x19651D7d4892803Cc08cA62897C85640406b2075
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const StyledLabel = styled.label`
   font-weight: bold;
@@ -47,6 +49,12 @@ const StyledButton = styled.button`
   cursor: pointer;
 `;
 
+type TVoucher = {
+  code: string;
+  amount: string;
+  recipient?: string;
+};
+
 export function Voucher(): ReactElement {
   const context = useWeb3React<Provider>();
   const { library, active } = context;
@@ -57,15 +65,53 @@ export function Voucher(): ReactElement {
   const [voucherStoreContractAddr, setVoucherStoreContractAddr] =
     useState<string>("");
   const [depositAmount, setDepositAmount] = useState<string>("");
+  const [accountVouchers, setAccountVouchers] = useState<TVoucher[]>([]);
+  const [createVoucherAmounts, setCreateVoucherAmounts] = useState<string[]>([
+    "",
+  ]);
+
+  // function updateVoucherState(sender: string, code: string, amount: string) {
+  //   console.log("UPDATE", accountVouchers);
+  // }
 
   useEffect((): void => {
     if (!library) {
       setSigner(undefined);
       return;
     }
-
     setSigner(library.getSigner());
   }, [library]);
+
+  async function postRequestVoucherCreated(vouchers: TVoucher[]) {
+    const sender = signer ? await signer.getAddress() : "tmp";
+    const frontendCode = "todo12345";
+    let method = "PUT";
+    let url = "http://localhost:3004/data/" + sender;
+    await fetch(url)
+      .then(async (response) => {
+        if (response.ok) {
+          return response.json();
+        }
+        method = "POST";
+        url = "http://localhost:3004/data";
+        throw new Error("Something went wrong");
+      })
+      .catch(() => console.log("error in get"));
+    const requestOptions = {
+      method: method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: sender,
+        vouchers: vouchers,
+        contractAddress: voucherStoreContractAddr,
+        frontendCode: frontendCode,
+      }),
+    };
+
+    await fetch(url, requestOptions)
+      .then((response) => response.json())
+      .then((data) => console.log("data", data));
+  }
 
   async function getDepositAmount(): Promise<void> {
     const _amount = (
@@ -75,6 +121,10 @@ export function Voucher(): ReactElement {
     if (_amount !== _amount) {
       setDepositAmount(_amount);
     }
+    if (!voucherStoreContract || !signer) {
+      return;
+    }
+    console.log("vouchers", accountVouchers);
   }
 
   useEffect((): void => {
@@ -127,13 +177,91 @@ export function Voucher(): ReactElement {
 
   async function handleDeposit() {
     if (!voucherStoreContract) {
-      window.alert("Undefined greeterContract");
+      window.alert("Undefined voucherContract");
       return;
     }
     try {
       let tx = await voucherStoreContract.deposit({
         value: ethers.utils.parseEther(depositAmount),
       });
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+  }
+
+  async function handleSendVouchers() {
+    if (!voucherStoreContract) {
+      window.alert("Undefined voucherContract");
+      return;
+    }
+    try {
+      let recipients: string[] = [];
+      let codes = [];
+
+      const testRecipients = [
+        "0x999D60f0f58B032461B6a042DC9e4193e5F2687C",
+        "0x6a940484d811C211B049e90Eb079a5d705A25a50",
+      ];
+      for (let i = 0; i < accountVouchers.length; i++) {
+        recipients.push(testRecipients[i]);
+        codes.push(accountVouchers[i].code);
+      }
+      let tx = await voucherStoreContract.sendVouchers(testRecipients, codes);
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+  }
+
+  async function handleAddVouchers() {
+    if (!voucherStoreContract) {
+      window.alert("Undefined greeterContract");
+      return;
+    }
+    try {
+      let tx = await voucherStoreContract.addVouchers([
+        ethers.utils.parseEther("2"),
+        ethers.utils.parseEther("1"),
+      ]);
+      const receipt = await tx.wait();
+      let iface = new ethers.utils.Interface(VoucherStoreArtifact.abi);
+      let vouchers: TVoucher[] = [];
+      for (let i = 0; i < receipt.logs.length; i++) {
+        const receiptArgs = iface.parseLog(receipt.logs[i]).args;
+        const _amount = receiptArgs[2].toString();
+        vouchers.push({ code: receiptArgs[1], amount: _amount });
+      }
+      setAccountVouchers(vouchers);
+      postRequestVoucherCreated(vouchers);
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+  }
+
+  async function handleReclaimVouchers() {
+    if (!voucherStoreContract) {
+      window.alert("Undefined voucherContract");
+      return;
+    }
+    try {
+      let tx = await voucherStoreContract.addVouchers([
+        ethers.utils.parseEther("2"),
+        ethers.utils.parseEther("1"),
+      ]);
+      const receipt = await tx.wait();
+      let iface = new ethers.utils.Interface(VoucherStoreArtifact.abi);
+      let vouchers: TVoucher[] = [];
+      for (let i = 0; i < receipt.logs.length; i++) {
+        const receiptArgs = iface.parseLog(receipt.logs[i]).args;
+        const _amount = receiptArgs[2].toString();
+        vouchers.push({ code: receiptArgs[1], amount: _amount });
+      }
+      setAccountVouchers(vouchers);
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -197,7 +325,40 @@ export function Voucher(): ReactElement {
           Submit
         </StyledButton>
       </StyledGreetingDiv>
-      <StyledButton
+      <SectionDivider />
+      <StyledDeployContractButton
+        disabled={!active || !voucherStoreContract ? true : false}
+        style={{
+          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
+          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+        }}
+        onClick={handleAddVouchers}
+      >
+        Add vouchers
+      </StyledDeployContractButton>
+      <SectionDivider />
+      <StyledDeployContractButton
+        disabled={!active || !voucherStoreContract ? true : false}
+        style={{
+          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
+          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+        }}
+        onClick={handleSendVouchers}
+      >
+        Send Vouchers
+      </StyledDeployContractButton>
+      <SectionDivider />
+      <StyledDeployContractButton
+        disabled={!active || !voucherStoreContract ? true : false}
+        style={{
+          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
+          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+        }}
+        onClick={getDepositAmount}
+      >
+        Get Deposit Amount
+      </StyledDeployContractButton>
+      {/* <StyledButton
         disabled={!active || !voucherStoreContract ? true : false}
         style={{
           cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
@@ -206,7 +367,7 @@ export function Voucher(): ReactElement {
         onClick={getDepositAmount}
       >
         Submit
-      </StyledButton>
+      </StyledButton> */}
     </>
   );
 }
