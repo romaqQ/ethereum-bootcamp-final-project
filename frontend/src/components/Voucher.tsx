@@ -42,12 +42,16 @@ const StyledInput = styled.input`
 `;
 
 const StyledButton = styled.button`
-  width: 150px;
+  width: 75px;
   height: 2rem;
-  border-radius: 1rem;
+
   border-color: blue;
   cursor: pointer;
 `;
+
+interface InputField {
+  value: number;
+}
 
 type TVoucher = {
   code: string;
@@ -69,6 +73,54 @@ export function Voucher(): ReactElement {
   const [createVoucherAmounts, setCreateVoucherAmounts] = useState<string[]>([
     "",
   ]);
+  const [inputFields, setInputFields] = useState<InputField[]>([]);
+  const [maxValue, setMaxValue] = useState(100);
+
+  const handleAddFields = () => {
+    const newFields = [...inputFields];
+    newFields.push({ value: 1 });
+    setInputFields(newFields);
+  };
+
+  const handleRemoveFields = (index: number) => {
+    const newFields = [...inputFields];
+    newFields.splice(index, 1);
+    setInputFields(newFields);
+  };
+
+  const inputSum = () => {
+    const sum = inputFields.reduce((total, value) => {
+      return isNaN(value.value) ? total : total + value.value;
+    }, 0);
+    return sum;
+  };
+
+  const handleInputChange = (index: number, value: number) => {
+    const newFields = [...inputFields];
+    newFields[index].value = value;
+    setInputFields(newFields);
+    const currentVoucherAmount = inputSum();
+    const floatDepositAmount = parseFloat(depositAmount);
+    setMaxValue(floatDepositAmount - currentVoucherAmount);
+  };
+
+  const renderInputFields = () => {
+    return inputFields.map((field, index) => (
+      <div key={index} style={{ margin: "0.2rem" }}>
+        <StyledInput
+          type="number"
+          min={0.01}
+          step="0.01"
+          max={maxValue}
+          value={field.value}
+          onChange={(e) => handleInputChange(index, e.target.valueAsNumber)}
+        />
+        <StyledButton onClick={() => handleRemoveFields(index)}>
+          Remove
+        </StyledButton>
+      </div>
+    ));
+  };
 
   // function updateVoucherState(sender: string, code: string, amount: string) {
   //   console.log("UPDATE", accountVouchers);
@@ -326,6 +378,17 @@ export function Voucher(): ReactElement {
         </StyledButton>
       </StyledGreetingDiv>
       <SectionDivider />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+        }}
+      >
+        {renderInputFields()}
+        <button onClick={handleAddFields}>Add Field</button>
+      </div>
       <StyledDeployContractButton
         disabled={!active || !voucherStoreContract ? true : false}
         style={{
