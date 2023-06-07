@@ -12,7 +12,7 @@ import VoucherStoreArtifact from "../artifacts/contracts/VoucherStore.sol/Vouche
 import { Provider } from "../utils/provider";
 import { SectionDivider } from "./SectionDivider";
 
-const StyledDeployContractButton = styled.button`
+export const StyledDeployContractButton = styled.button`
   width: 180px;
   height: 2rem;
   border-radius: 1rem;
@@ -21,7 +21,7 @@ const StyledDeployContractButton = styled.button`
   place-self: center;
 `;
 
-const StyledGreetingDiv = styled.div`
+export const StyledGreetingDiv = styled.div`
   display: grid;
   grid-template-rows: 1fr 1fr 1fr;
   grid-template-columns: 135px 2.7fr 1fr;
@@ -29,19 +29,19 @@ const StyledGreetingDiv = styled.div`
   place-self: center;
   align-items: center;
 `;
-// 0x19651D7d4892803Cc08cA62897C85640406b2075
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const StyledLabel = styled.label`
+export const StyledLabel = styled.label`
   font-weight: bold;
 `;
 
-const StyledInput = styled.input`
+export const StyledInput = styled.input`
   padding: 0.4rem 0.6rem;
   line-height: 2fr;
 `;
 
-const StyledButton = styled.button`
+export const StyledButton = styled.button`
   width: 75px;
   height: 2rem;
 
@@ -57,6 +57,7 @@ type TVoucher = {
   code: string;
   amount: string;
   recipient?: string;
+  send?: boolean;
 };
 
 export function Voucher(): ReactElement {
@@ -122,10 +123,6 @@ export function Voucher(): ReactElement {
     ));
   };
 
-  // function updateVoucherState(sender: string, code: string, amount: string) {
-  //   console.log("UPDATE", accountVouchers);
-  // }
-
   useEffect((): void => {
     if (!library) {
       setSigner(undefined);
@@ -135,10 +132,10 @@ export function Voucher(): ReactElement {
   }, [library]);
 
   async function postRequestVoucherCreated(vouchers: TVoucher[]) {
-    const sender = signer ? await signer.getAddress() : "tmp";
+    const sender = signer ? await signer.getAddress() : "";
     const frontendCode = "todo12345";
     let method = "PUT";
-    let url = "http://localhost:3004/data/" + sender;
+    let url = "http://localhost:3004/data/" + frontendCode;
     await fetch(url)
       .then(async (response) => {
         if (response.ok) {
@@ -153,16 +150,16 @@ export function Voucher(): ReactElement {
       method: method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: sender,
+        id: frontendCode,
         vouchers: vouchers,
         contractAddress: voucherStoreContractAddr,
-        frontendCode: frontendCode,
+        pledger: sender,
       }),
     };
 
     await fetch(url, requestOptions)
       .then((response) => response.json())
-      .then((data) => console.log("data", data));
+      .then((data) => setAccountVouchers(data.vouchers));
   }
 
   async function getDepositAmount(): Promise<void> {
@@ -210,7 +207,6 @@ export function Voucher(): ReactElement {
         await voucherStoreContract.deployed();
 
         setVoucherStoreContract(voucherStoreContract);
-        // setGreeting(greeting);
 
         window.alert(
           `Voucher store deployed to: ${voucherStoreContract.address}`
@@ -248,19 +244,22 @@ export function Voucher(): ReactElement {
       window.alert("Undefined voucherContract");
       return;
     }
-    try {
-      let recipients: string[] = [];
-      let codes = [];
+    let validVouchers = accountVouchers.filter(
+      (a) => a.recipient && a.send !== true
+    );
+    console.log(validVouchers);
 
-      const testRecipients = [
-        "0x999D60f0f58B032461B6a042DC9e4193e5F2687C",
-        "0x6a940484d811C211B049e90Eb079a5d705A25a50",
-      ];
-      for (let i = 0; i < accountVouchers.length; i++) {
-        recipients.push(testRecipients[i]);
-        codes.push(accountVouchers[i].code);
-      }
-      let tx = await voucherStoreContract.sendVouchers(testRecipients, codes);
+    if (!validVouchers) {
+      window.alert("No valid vouchers found.");
+      return;
+    }
+    try {
+      let recipients: string[] = validVouchers.map((a) =>
+        a.recipient ? a.recipient : ""
+      );
+      let codes: string[] = validVouchers.map((a) => a.code);
+
+      let tx = await voucherStoreContract.sendVouchers(recipients, codes);
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -274,10 +273,10 @@ export function Voucher(): ReactElement {
       return;
     }
     try {
-      let tx = await voucherStoreContract.addVouchers([
-        ethers.utils.parseEther("2"),
-        ethers.utils.parseEther("1"),
-      ]);
+      const voucherAmounts = inputFields.map((a) =>
+        ethers.utils.parseEther(a.value.toString())
+      );
+      let tx = await voucherStoreContract.addVouchers(voucherAmounts);
       const receipt = await tx.wait();
       let iface = new ethers.utils.Interface(VoucherStoreArtifact.abi);
       let vouchers: TVoucher[] = [];

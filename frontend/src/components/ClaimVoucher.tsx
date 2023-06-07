@@ -1,57 +1,41 @@
-import { ReactElement, useEffect, useState } from "react";
+import { ChangeEvent, ReactElement, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useWeb3React } from "@web3-react/core";
-import { Contract, ethers, Signer } from "ethers";
+import { ethers } from "ethers";
 import { Provider } from "../utils/provider";
-import VoucherStoreArtifact from "../artifacts/contracts/VoucherStore.sol/VoucherStore.json";
+import { StyledInput, StyledLabel } from "./Voucher";
 
 export function ClaimVoucher(): ReactElement {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
-  const contractAddress = queryParams.get("contract");
-  const senderAddress = queryParams.get("sender");
   const smartContractCode = queryParams.get("scode");
-  const frontendCode = queryParams.get("fcode");
+  const frontendCodeURL = queryParams.get("fcode");
 
   const context = useWeb3React<Provider>();
-  var url = "http://localhost:8545";
-  var provider = new ethers.providers.JsonRpcProvider(url);
   const [signer, setSigner] = useState<string>("");
-  const [voucherStoreContract, setVoucherStoreContract] = useState<Contract>();
-  const [voucherStoreContractAddr, setVoucherStoreContractAddr] =
-    useState<string>("");
-  const [voucherPledgerAddress, setVoucherPledgeAddress] = useState<string>("");
+  const [frontendCode, setFrontendCode] = useState<string>();
+  const [solidityCode, setSolidityCode] = useState<string>();
   const [voucherAmount, setVoucherAmount] = useState<string>("0");
+  const [claimable, setClaimable] = useState<boolean>(false);
+  const [voucherData, setVoucherData] = useState<any>();
+  const [voucherCodeIndex, setVoucherCodeIndex] = useState<number>(0);
 
   async function handleClaim() {
-    let url = "http://localhost:3004/data/" + voucherPledgerAddress;
+    let url = "http://localhost:3004/data/" + frontendCode;
+    voucherData.vouchers[voucherCodeIndex].recipient == signer;
     const requestOptions = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(voucherData),
     };
-    console.log("TODO");
-    // await fetch(url, requestOptions)
-    //   .then((response) => response.json())
-    //   .then(function (data) {
-    //     if (data.contractAddress === contract && data.frontendCode === fcode) {
-    //       for (let i = 0; i < data.vouchers.length; i++) {
-    //         if (data.vouchers[i].code === scode) {
-    //           setVoucherAmount(data.vouchers[i].amount);
-    //         }
-    //       }
-    //     } else {
-    //       window.alert("Unknown combination");
-    //     }
-    //   });
+
+    await fetch(url, requestOptions)
+      .then((response) => response.json())
+      .then((data) => console.log(data));
   }
 
-  async function getVoucher(
-    sender: string,
-    contract: string,
-    scode: string,
-    fcode: string
-  ) {
-    let url = "http://localhost:3004/data/" + sender;
+  async function getVoucher() {
+    let url = "http://localhost:3004/data/" + frontendCode;
     const requestOptions = {
       method: "GET",
       headers: { "Content-Type": "application/json" },
@@ -61,21 +45,20 @@ export function ClaimVoucher(): ReactElement {
     await fetch(url, requestOptions)
       .then((response) => response.json())
       .then(function (data) {
-        if (data.contractAddress === contract && data.frontendCode === fcode) {
-          for (let i = 0; i < data.vouchers.length; i++) {
-            if (data.vouchers[i].code === scode) {
-              found = true;
-              foundAmount = data.vouchers[i].amount;
+        for (let i = 0; i < data.vouchers.length; i++) {
+          if (data.vouchers[i].code === solidityCode) {
+            if (data.vouchers[i].claimer) {
+              window.alert("Sorry, code was already claimed.");
+            } else {
+              setVoucherData(data);
+              setVoucherCodeIndex(i);
+              setVoucherAmount((foundAmount = data.vouchers[i].amount));
+              setClaimable(true);
             }
+            found = true;
           }
-          if (found) {
-            setVoucherAmount(foundAmount);
-            setVoucherStoreContractAddr(contract);
-            setVoucherPledgeAddress(sender);
-          } else {
-            window.alert("Unknown combination");
-          }
-        } else {
+        }
+        if (!found) {
           window.alert("Unknown combination");
         }
       });
@@ -87,30 +70,49 @@ export function ClaimVoucher(): ReactElement {
     } else {
       setSigner(context.account);
     }
-    if (contractAddress && senderAddress && smartContractCode && frontendCode) {
-      getVoucher(
-        senderAddress,
-        contractAddress,
-        smartContractCode,
-        frontendCode
-      );
-      const contract = new ethers.Contract(
-        contractAddress,
-        VoucherStoreArtifact.abi,
-        provider
-      );
-      setVoucherStoreContractAddr(contractAddress);
-      setVoucherStoreContract(contract);
-    } else {
-      window.alert("Unknown contract");
-    }
+    console.log(frontendCodeURL);
+    setFrontendCode(frontendCodeURL ? frontendCodeURL : "");
+    setSolidityCode(smartContractCode ? smartContractCode : "");
   }, []);
+
+  function handleSolidityCode(event: ChangeEvent<HTMLInputElement>): void {
+    event.preventDefault();
+    setSolidityCode(event.target.value);
+  }
+
+  function handleFrontendCode(event: ChangeEvent<HTMLInputElement>): void {
+    event.preventDefault();
+    setFrontendCode(event.target.value);
+  }
 
   return (
     <>
-      <p>You are qualified to claim a Voucher of: </p>
-      {ethers.utils.formatEther(voucherAmount)} <p>ETH</p>
-      <button onClick={handleClaim}>Claim now</button>
+      <StyledLabel htmlFor="fCode">Set frontend code</StyledLabel>
+      <StyledInput
+        id="fCode"
+        type="text"
+        onChange={handleFrontendCode}
+        value={frontendCode}
+        placeholder="Set frontend code"
+      ></StyledInput>
+      <StyledLabel htmlFor="scode">Set backend code</StyledLabel>
+      <StyledInput
+        id="scode"
+        type="text"
+        onChange={handleSolidityCode}
+        value={solidityCode}
+        placeholder="Set backend code"
+      ></StyledInput>
+      {frontendCode && solidityCode && (
+        <button onClick={getVoucher}>Verify Codes</button>
+      )}
+      {claimable && (
+        <>
+          <p>Congratulations! You are qualified to claim a Voucher of: </p>
+          {ethers.utils.formatEther(voucherAmount)} <p>ETH</p>
+          <button onClick={handleClaim}>Claim now</button>
+        </>
+      )}
     </>
   );
 }
