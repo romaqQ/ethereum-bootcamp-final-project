@@ -1,5 +1,7 @@
 import { useWeb3React } from "@web3-react/core";
 import { Contract, ethers, Signer } from "ethers";
+import { useLocation } from "react-router-dom";
+
 import {
   ChangeEvent,
   MouseEvent,
@@ -59,8 +61,43 @@ type TVoucher = {
   recipient?: string;
   send?: boolean;
 };
+interface TableProps {
+  data: {
+    code: string;
+    amount: string;
+    recipient?: string;
+    send?: boolean;
+  }[];
+}
+const VoucherTable: React.FC<TableProps> = ({ data }) => {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Amount</th>
+          <th>Recipient</th>
+          <th>Send?</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((item, index) => (
+          <tr key={index}>
+            <td>{item.code}</td>
+            <td>{item.amount}</td>
+            <td>{item.recipient ? item.recipient : "Not claimed"}</td>
+            <td>{item.send ? item.send : "false"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
 
 export function Voucher(): ReactElement {
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initContractAddr = queryParams.get("contract");
   const context = useWeb3React<Provider>();
   const { library, active } = context;
   var url = "http://localhost:8545";
@@ -69,11 +106,11 @@ export function Voucher(): ReactElement {
   const [voucherStoreContract, setVoucherStoreContract] = useState<Contract>();
   const [voucherStoreContractAddr, setVoucherStoreContractAddr] =
     useState<string>("");
+  const [fundedAmount, setFoundedAmount] = useState<string>("");
+
   const [depositAmount, setDepositAmount] = useState<string>("");
   const [accountVouchers, setAccountVouchers] = useState<TVoucher[]>([]);
-  const [createVoucherAmounts, setCreateVoucherAmounts] = useState<string[]>([
-    "",
-  ]);
+
   const [inputFields, setInputFields] = useState<InputField[]>([]);
   const [maxValue, setMaxValue] = useState(100);
 
@@ -123,12 +160,48 @@ export function Voucher(): ReactElement {
     ));
   };
 
+  async function getDeployedVouchers(
+    initSigner: Signer,
+    initContractAddr: string
+  ) {
+    let url = "http://localhost:3004/data";
+    let signerAddress = await initSigner.getAddress();
+    await fetch(url)
+      .then(async (response) => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error("Something went wrong");
+      })
+      .then((data) => {
+        const filteredData = data.filter(
+          (a: { pledger: string | undefined; contractAddress: string }) =>
+            a.pledger == signerAddress && a.contractAddress == initContractAddr
+        );
+        setAccountVouchers(filteredData[0].vouchers);
+      });
+  }
+
   useEffect((): void => {
     if (!library) {
       setSigner(undefined);
       return;
     }
-    setSigner(library.getSigner());
+    const initSigner = library.getSigner();
+    setSigner(initSigner);
+    if (initContractAddr) {
+      let contract = new ethers.Contract(
+        initContractAddr,
+        VoucherStoreArtifact.abi,
+        provider
+      );
+      if (initSigner) {
+        let contractWithSigner = contract.connect(initSigner);
+        setVoucherStoreContractAddr(initContractAddr);
+        setVoucherStoreContract(contractWithSigner);
+        getDeployedVouchers(initSigner, initContractAddr);
+      }
+    }
   }, [library]);
 
   async function postRequestVoucherCreated(vouchers: TVoucher[]) {
@@ -167,13 +240,11 @@ export function Voucher(): ReactElement {
       await provider.getBalance(voucherStoreContractAddr)
     ).toString();
     console.log("_amount", _amount);
-    if (_amount !== _amount) {
-      setDepositAmount(_amount);
-    }
+    setFoundedAmount(_amount);
+
     if (!voucherStoreContract || !signer) {
       return;
     }
-    console.log("vouchers", accountVouchers);
   }
 
   useEffect((): void => {
@@ -232,6 +303,7 @@ export function Voucher(): ReactElement {
       let tx = await voucherStoreContract.deposit({
         value: ethers.utils.parseEther(depositAmount),
       });
+      setFoundedAmount(depositAmount);
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -294,32 +366,6 @@ export function Voucher(): ReactElement {
     }
   }
 
-  async function handleReclaimVouchers() {
-    if (!voucherStoreContract) {
-      window.alert("Undefined voucherContract");
-      return;
-    }
-    try {
-      let tx = await voucherStoreContract.addVouchers([
-        ethers.utils.parseEther("2"),
-        ethers.utils.parseEther("1"),
-      ]);
-      const receipt = await tx.wait();
-      let iface = new ethers.utils.Interface(VoucherStoreArtifact.abi);
-      let vouchers: TVoucher[] = [];
-      for (let i = 0; i < receipt.logs.length; i++) {
-        const receiptArgs = iface.parseLog(receipt.logs[i]).args;
-        const _amount = receiptArgs[2].toString();
-        vouchers.push({ code: receiptArgs[1], amount: _amount });
-      }
-      setAccountVouchers(vouchers);
-    } catch (error: any) {
-      window.alert(
-        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
-      );
-    }
-  }
-
   function handleDepositAmountChange(
     event: ChangeEvent<HTMLInputElement>
   ): void {
@@ -349,6 +395,17 @@ export function Voucher(): ReactElement {
             <em>{`<Contract not yet deployed>`}</em>
           )}
         </div>
+        <div></div>
+
+        <StyledLabel>Contract amount</StyledLabel>
+        <div>
+          {fundedAmount ? (
+            ethers.utils.formatEther(fundedAmount) + " ETH"
+          ) : (
+            <em>{`<Contract not yet funded>`}</em>
+          )}
+        </div>
+
         {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
         {/* <div></div>
         <StyledLabel></StyledLabel>
@@ -357,25 +414,43 @@ export function Voucher(): ReactElement {
         </div> */}
         {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
         <div></div>
-        <StyledLabel htmlFor="depositAmount">Set deposit amount</StyledLabel>
-        <StyledInput
-          id="depositAmount"
-          type="text"
-          onChange={handleDepositAmountChange}
-          placeholder="Set deposit Amount"
-        ></StyledInput>
-        <StyledButton
-          disabled={!active || !voucherStoreContract ? true : false}
-          style={{
-            cursor:
-              !active || !voucherStoreContract ? "not-allowed" : "pointer",
-            borderColor: !active || !voucherStoreContract ? "unset" : "blue",
-          }}
-          onClick={handleDeposit}
-        >
-          Submit
-        </StyledButton>
+        {fundedAmount === "0" && (
+          <>
+            <StyledLabel htmlFor="depositAmount">
+              Set deposit amount
+            </StyledLabel>
+            <StyledInput
+              id="depositAmount"
+              type="text"
+              onChange={handleDepositAmountChange}
+              placeholder="Set deposit Amount"
+            ></StyledInput>
+            <StyledButton
+              disabled={!active || !voucherStoreContract ? true : false}
+              style={{
+                cursor:
+                  !active || !voucherStoreContract ? "not-allowed" : "pointer",
+                borderColor:
+                  !active || !voucherStoreContract ? "unset" : "blue",
+              }}
+              onClick={handleDeposit}
+            >
+              Submit
+            </StyledButton>
+          </>
+        )}
       </StyledGreetingDiv>
+      <SectionDivider />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+        }}
+      >
+        <VoucherTable data={accountVouchers} />
+      </div>
       <SectionDivider />
       <div
         style={{

@@ -1,7 +1,7 @@
 import { ChangeEvent, ReactElement, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useWeb3React } from "@web3-react/core";
-import { ethers } from "ethers";
+import { Signer, ethers } from "ethers";
 import { Provider } from "../utils/provider";
 import { StyledInput, StyledLabel } from "./Voucher";
 
@@ -12,7 +12,10 @@ export function ClaimVoucher(): ReactElement {
   const frontendCodeURL = queryParams.get("fcode");
 
   const context = useWeb3React<Provider>();
-  const [signer, setSigner] = useState<string>("");
+  const { library, active } = context;
+  var url = "http://localhost:8545";
+  var provider = new ethers.providers.JsonRpcProvider(url);
+  const [signer, setSigner] = useState<Signer>();
   const [frontendCode, setFrontendCode] = useState<string>();
   const [solidityCode, setSolidityCode] = useState<string>();
   const [voucherAmount, setVoucherAmount] = useState<string>("0");
@@ -22,16 +25,20 @@ export function ClaimVoucher(): ReactElement {
 
   async function handleClaim() {
     let url = "http://localhost:3004/data/" + frontendCode;
-    voucherData.vouchers[voucherCodeIndex].recipient == signer;
+    const signerAddress = await signer?.getAddress();
+    voucherData.vouchers[voucherCodeIndex].recipient = signerAddress;
+    const body = JSON.stringify(voucherData);
     const requestOptions = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(voucherData),
+      body: body,
     };
-
+    console.log("body", body);
     await fetch(url, requestOptions)
       .then((response) => response.json())
-      .then((data) => console.log(data));
+      .then((data) =>
+        window.alert("Congratulations you claimed your voucher!")
+      );
   }
 
   async function getVoucher() {
@@ -65,15 +72,14 @@ export function ClaimVoucher(): ReactElement {
   }
 
   useEffect((): void => {
-    if (!context.account) {
-      window.alert("Please connect your wallet to continue");
-    } else {
-      setSigner(context.account);
+    if (!library) {
+      setSigner(undefined);
+      return;
     }
-    console.log(frontendCodeURL);
+    setSigner(library.getSigner());
     setFrontendCode(frontendCodeURL ? frontendCodeURL : "");
     setSolidityCode(smartContractCode ? smartContractCode : "");
-  }, []);
+  }, [library]);
 
   function handleSolidityCode(event: ChangeEvent<HTMLInputElement>): void {
     event.preventDefault();
