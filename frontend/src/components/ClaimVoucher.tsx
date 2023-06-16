@@ -55,7 +55,7 @@ export function ClaimVoucher(): ReactElement {
         for (let i = 0; i < data.vouchers.length; i++) {
           if (data.vouchers[i].code === solidityCode) {
             if (data.vouchers[i].claimer) {
-              window.alert("Sorry, code was already claimed.");
+              window.alert("Sorry, code has already been claimed.");
             } else {
               setVoucherData(data);
               setVoucherCodeIndex(i);

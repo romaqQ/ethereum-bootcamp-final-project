@@ -1,6 +1,7 @@
 import { useWeb3React } from "@web3-react/core";
-import { Contract, ethers, Signer } from "ethers";
+import { BigNumber, Contract, ethers, Signer } from "ethers";
 import { useLocation } from "react-router-dom";
+import copy from "clipboard-copy";
 
 import {
   ChangeEvent,
@@ -68,8 +69,23 @@ interface TableProps {
     recipient?: string;
     send?: boolean;
   }[];
+  frontendCode: string;
 }
-const VoucherTable: React.FC<TableProps> = ({ data }) => {
+
+function generateRandomString(length: number) {
+  const characters =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length);
+    result += characters.charAt(randomIndex);
+  }
+
+  return result;
+}
+
+const VoucherTable: React.FC<TableProps> = ({ data, frontendCode }) => {
   return (
     <table>
       <thead>
@@ -78,6 +94,7 @@ const VoucherTable: React.FC<TableProps> = ({ data }) => {
           <th>Amount</th>
           <th>Recipient</th>
           <th>Send?</th>
+          <th>Link</th>
         </tr>
       </thead>
       <tbody>
@@ -86,7 +103,21 @@ const VoucherTable: React.FC<TableProps> = ({ data }) => {
             <td>{item.code}</td>
             <td>{item.amount}</td>
             <td>{item.recipient ? item.recipient : "Not claimed"}</td>
-            <td>{item.send ? item.send : "false"}</td>
+            <td>{item.send ? item.send.toString() : "false"}</td>
+            <td>
+              <button
+                onClick={() => {
+                  copy(
+                    "http://localhost:3000/claim?fcode=" +
+                      frontendCode +
+                      "&scode=" +
+                      item.code
+                  );
+                }}
+              >
+                Copy Link
+              </button>
+            </td>
           </tr>
         ))}
       </tbody>
@@ -106,7 +137,8 @@ export function Voucher(): ReactElement {
   const [voucherStoreContract, setVoucherStoreContract] = useState<Contract>();
   const [voucherStoreContractAddr, setVoucherStoreContractAddr] =
     useState<string>("");
-  const [fundedAmount, setFoundedAmount] = useState<string>("");
+  const [fundedAmount, setFundedAmount] = useState<BigNumber>();
+  const [frontendCode, setFrontendCode] = useState<string>("");
 
   const [depositAmount, setDepositAmount] = useState<string>("");
   const [accountVouchers, setAccountVouchers] = useState<TVoucher[]>([]);
@@ -138,7 +170,7 @@ export function Voucher(): ReactElement {
     newFields[index].value = value;
     setInputFields(newFields);
     const currentVoucherAmount = inputSum();
-    const floatDepositAmount = parseFloat(depositAmount);
+    const floatDepositAmount = Number(fundedAmount);
     setMaxValue(floatDepositAmount - currentVoucherAmount);
   };
 
@@ -179,6 +211,7 @@ export function Voucher(): ReactElement {
             a.pledger == signerAddress && a.contractAddress == initContractAddr
         );
         setAccountVouchers(filteredData[0].vouchers);
+        setFrontendCode(filteredData[0].id);
       });
   }
 
@@ -206,7 +239,8 @@ export function Voucher(): ReactElement {
 
   async function postRequestVoucherCreated(vouchers: TVoucher[]) {
     const sender = signer ? await signer.getAddress() : "";
-    const frontendCode = "todo12345";
+    const frontendCode = generateRandomString(6);
+    setFrontendCode(frontendCode);
     let method = "PUT";
     let url = "http://localhost:3004/data/" + frontendCode;
     await fetch(url)
@@ -236,11 +270,19 @@ export function Voucher(): ReactElement {
   }
 
   async function getDepositAmount(): Promise<void> {
-    const _amount = (
-      await provider.getBalance(voucherStoreContractAddr)
-    ).toString();
-    console.log("_amount", _amount);
-    setFoundedAmount(_amount);
+    if (!voucherStoreContract) {
+      // window.alert("Undefined voucherContract");
+      return;
+    }
+    try {
+      const pledger = signer ? await signer.getAddress() : "";
+      let tx = await voucherStoreContract.viewPledger(pledger);
+      setFundedAmount(tx.balance);
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
 
     if (!voucherStoreContract || !signer) {
       return;
@@ -303,7 +345,7 @@ export function Voucher(): ReactElement {
       let tx = await voucherStoreContract.deposit({
         value: ethers.utils.parseEther(depositAmount),
       });
-      setFoundedAmount(depositAmount);
+      setFundedAmount(tx.value);
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -319,7 +361,6 @@ export function Voucher(): ReactElement {
     let validVouchers = accountVouchers.filter(
       (a) => a.recipient && a.send !== true
     );
-    console.log(validVouchers);
 
     if (!validVouchers) {
       window.alert("No valid vouchers found.");
@@ -332,6 +373,28 @@ export function Voucher(): ReactElement {
       let codes: string[] = validVouchers.map((a) => a.code);
 
       let tx = await voucherStoreContract.sendVouchers(recipients, codes);
+      accountVouchers.forEach((voucher) => {
+        const updatedVoucher = validVouchers.find(
+          (updateVoucher) => updateVoucher.code === voucher.code
+        );
+        if (updatedVoucher) {
+          voucher.send = true;
+        }
+      });
+      let url = "http://localhost:3004/data/" + frontendCode;
+      const sender = signer ? await signer.getAddress() : "";
+      const requestOptions = {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: frontendCode,
+          contractAddress: voucherStoreContractAddr,
+          pledger: sender,
+          vouchers: accountVouchers,
+        }),
+      };
+      await fetch(url, requestOptions).then((response) => response.json());
+      setAccountVouchers(accountVouchers);
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -414,31 +477,25 @@ export function Voucher(): ReactElement {
         </div> */}
         {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
         <div></div>
-        {fundedAmount === "0" && (
-          <>
-            <StyledLabel htmlFor="depositAmount">
-              Set deposit amount
-            </StyledLabel>
-            <StyledInput
-              id="depositAmount"
-              type="text"
-              onChange={handleDepositAmountChange}
-              placeholder="Set deposit Amount"
-            ></StyledInput>
-            <StyledButton
-              disabled={!active || !voucherStoreContract ? true : false}
-              style={{
-                cursor:
-                  !active || !voucherStoreContract ? "not-allowed" : "pointer",
-                borderColor:
-                  !active || !voucherStoreContract ? "unset" : "blue",
-              }}
-              onClick={handleDeposit}
-            >
-              Submit
-            </StyledButton>
-          </>
-        )}
+
+        <StyledLabel htmlFor="depositAmount">Set deposit amount</StyledLabel>
+        <StyledInput
+          id="depositAmount"
+          type="text"
+          onChange={handleDepositAmountChange}
+          placeholder="Set deposit Amount"
+        ></StyledInput>
+        <StyledButton
+          disabled={!active || !voucherStoreContract ? true : false}
+          style={{
+            cursor:
+              !active || !voucherStoreContract ? "not-allowed" : "pointer",
+            borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+          }}
+          onClick={handleDeposit}
+        >
+          Submit
+        </StyledButton>
       </StyledGreetingDiv>
       <SectionDivider />
       <div
@@ -449,7 +506,7 @@ export function Voucher(): ReactElement {
           flexDirection: "column",
         }}
       >
-        <VoucherTable data={accountVouchers} />
+        <VoucherTable data={accountVouchers} frontendCode={frontendCode} />
       </div>
       <SectionDivider />
       <div
@@ -495,7 +552,7 @@ export function Voucher(): ReactElement {
       >
         Get Deposit Amount
       </StyledDeployContractButton>
-      {/* <StyledButton
+      <StyledButton
         disabled={!active || !voucherStoreContract ? true : false}
         style={{
           cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
@@ -504,7 +561,7 @@ export function Voucher(): ReactElement {
         onClick={getDepositAmount}
       >
         Submit
-      </StyledButton> */}
+      </StyledButton>
     </>
   );
 }
