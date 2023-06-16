@@ -33,8 +33,6 @@ export const StyledGreetingDiv = styled.div`
   align-items: center;
 `;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 export const StyledLabel = styled.label`
   font-weight: bold;
 `;
@@ -61,15 +59,17 @@ type TVoucher = {
   amount: string;
   recipient?: string;
   send?: boolean;
+  id: string;
 };
+
 interface TableProps {
   data: {
     code: string;
     amount: string;
     recipient?: string;
     send?: boolean;
+    id: string;
   }[];
-  frontendCode: string;
 }
 
 function generateRandomString(length: number) {
@@ -85,12 +85,13 @@ function generateRandomString(length: number) {
   return result;
 }
 
-const VoucherTable: React.FC<TableProps> = ({ data, frontendCode }) => {
+const VoucherTable: React.FC<TableProps> = ({ data }) => {
   return (
     <table>
       <thead>
         <tr>
-          <th>Code</th>
+          <th>F-Code</th>
+          <th>S-Code</th>
           <th>Amount</th>
           <th>Recipient</th>
           <th>Send?</th>
@@ -100,6 +101,8 @@ const VoucherTable: React.FC<TableProps> = ({ data, frontendCode }) => {
       <tbody>
         {data.map((item, index) => (
           <tr key={index}>
+            <td>{item.id}</td>
+            {/* TODO: truncate */}
             <td>{item.code}</td>
             <td>{item.amount}</td>
             <td>{item.recipient ? item.recipient : "Not claimed"}</td>
@@ -109,7 +112,7 @@ const VoucherTable: React.FC<TableProps> = ({ data, frontendCode }) => {
                 onClick={() => {
                   copy(
                     "http://localhost:3000/claim?fcode=" +
-                      frontendCode +
+                      item.id +
                       "&scode=" +
                       item.code
                   );
@@ -138,7 +141,6 @@ export function Voucher(): ReactElement {
   const [voucherStoreContractAddr, setVoucherStoreContractAddr] =
     useState<string>("");
   const [fundedAmount, setFundedAmount] = useState<BigNumber>();
-  const [frontendCode, setFrontendCode] = useState<string>("");
 
   const [depositAmount, setDepositAmount] = useState<string>("");
   const [accountVouchers, setAccountVouchers] = useState<TVoucher[]>([]);
@@ -210,8 +212,7 @@ export function Voucher(): ReactElement {
           (a: { pledger: string | undefined; contractAddress: string }) =>
             a.pledger == signerAddress && a.contractAddress == initContractAddr
         );
-        setAccountVouchers(filteredData[0].vouchers);
-        setFrontendCode(filteredData[0].id);
+        setAccountVouchers(filteredData);
       });
   }
 
@@ -239,34 +240,22 @@ export function Voucher(): ReactElement {
 
   async function postRequestVoucherCreated(vouchers: TVoucher[]) {
     const sender = signer ? await signer.getAddress() : "";
-    const frontendCode = generateRandomString(6);
-    setFrontendCode(frontendCode);
-    let method = "PUT";
-    let url = "http://localhost:3004/data/" + frontendCode;
-    await fetch(url)
-      .then(async (response) => {
-        if (response.ok) {
-          return response.json();
-        }
-        method = "POST";
-        url = "http://localhost:3004/data";
-        throw new Error("Something went wrong");
-      })
-      .catch(() => console.log("error in get"));
-    const requestOptions = {
-      method: method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: frontendCode,
-        vouchers: vouchers,
-        contractAddress: voucherStoreContractAddr,
-        pledger: sender,
-      }),
-    };
-
-    await fetch(url, requestOptions)
-      .then((response) => response.json())
-      .then((data) => setAccountVouchers(data.vouchers));
+    for (let i = 0; i < vouchers.length; i++) {
+      let url = "http://localhost:3004/data";
+      const requestOptions = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: vouchers[i].id,
+          code: vouchers[i].code,
+          amount: vouchers[i].amount,
+          contractAddress: voucherStoreContractAddr,
+          pledger: sender,
+        }),
+      };
+      await fetch(url, requestOptions).then((response) => response.json());
+      // .then((data) => setAccountVouchers(data.voucher));
+    }
   }
 
   async function getDepositAmount(): Promise<void> {
@@ -373,27 +362,35 @@ export function Voucher(): ReactElement {
       let codes: string[] = validVouchers.map((a) => a.code);
 
       let tx = await voucherStoreContract.sendVouchers(recipients, codes);
+
+      for (let i = 0; i < validVouchers.length; i++) {
+        let url = "http://localhost:3004/data/" + validVouchers[i].id;
+        const sender = signer ? await signer.getAddress() : "";
+        const requestOptions = {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: validVouchers[i].id,
+            code: validVouchers[i].code,
+            amount: validVouchers[i].amount,
+            contractAddress: voucherStoreContractAddr,
+            pledger: sender,
+            recipient: validVouchers[i].recipient,
+            send: true,
+          }),
+        };
+        await fetch(url, requestOptions).then((response) => response.json());
+      }
+
       accountVouchers.forEach((voucher) => {
         const updatedVoucher = validVouchers.find(
-          (updateVoucher) => updateVoucher.code === voucher.code
+          (updateVoucher) => updateVoucher.id === voucher.id
         );
         if (updatedVoucher) {
           voucher.send = true;
         }
       });
-      let url = "http://localhost:3004/data/" + frontendCode;
-      const sender = signer ? await signer.getAddress() : "";
-      const requestOptions = {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: frontendCode,
-          contractAddress: voucherStoreContractAddr,
-          pledger: sender,
-          vouchers: accountVouchers,
-        }),
-      };
-      await fetch(url, requestOptions).then((response) => response.json());
+
       setAccountVouchers(accountVouchers);
     } catch (error: any) {
       window.alert(
@@ -416,9 +413,14 @@ export function Voucher(): ReactElement {
       let iface = new ethers.utils.Interface(VoucherStoreArtifact.abi);
       let vouchers: TVoucher[] = [];
       for (let i = 0; i < receipt.logs.length; i++) {
+        let fCode = generateRandomString(8);
         const receiptArgs = iface.parseLog(receipt.logs[i]).args;
         const _amount = receiptArgs[2].toString();
-        vouchers.push({ code: receiptArgs[1], amount: _amount });
+        vouchers.push({
+          code: receiptArgs[1],
+          amount: _amount,
+          id: fCode,
+        });
       }
       setAccountVouchers(vouchers);
       postRequestVoucherCreated(vouchers);
@@ -506,7 +508,7 @@ export function Voucher(): ReactElement {
           flexDirection: "column",
         }}
       >
-        <VoucherTable data={accountVouchers} frontendCode={frontendCode} />
+        <VoucherTable data={accountVouchers} />
       </div>
       <SectionDivider />
       <div
@@ -541,7 +543,7 @@ export function Voucher(): ReactElement {
       >
         Send Vouchers
       </StyledDeployContractButton>
-      <SectionDivider />
+      {/* <SectionDivider />
       <StyledDeployContractButton
         disabled={!active || !voucherStoreContract ? true : false}
         style={{
@@ -551,17 +553,7 @@ export function Voucher(): ReactElement {
         onClick={getDepositAmount}
       >
         Get Deposit Amount
-      </StyledDeployContractButton>
-      <StyledButton
-        disabled={!active || !voucherStoreContract ? true : false}
-        style={{
-          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
-          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
-        }}
-        onClick={getDepositAmount}
-      >
-        Submit
-      </StyledButton>
+      </StyledDeployContractButton> */}
     </>
   );
 }

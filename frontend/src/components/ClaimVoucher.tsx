@@ -13,27 +13,23 @@ export function ClaimVoucher(): ReactElement {
 
   const context = useWeb3React<Provider>();
   const { library, active } = context;
-  var url = "http://localhost:8545";
-  var provider = new ethers.providers.JsonRpcProvider(url);
   const [signer, setSigner] = useState<Signer>();
   const [frontendCode, setFrontendCode] = useState<string>();
   const [solidityCode, setSolidityCode] = useState<string>();
   const [voucherAmount, setVoucherAmount] = useState<string>("0");
   const [claimable, setClaimable] = useState<boolean>(false);
   const [voucherData, setVoucherData] = useState<any>();
-  const [voucherCodeIndex, setVoucherCodeIndex] = useState<number>(0);
 
   async function handleClaim() {
     let url = "http://localhost:3004/data/" + frontendCode;
     const signerAddress = await signer?.getAddress();
-    voucherData.vouchers[voucherCodeIndex].recipient = signerAddress;
+    voucherData.recipient = signerAddress;
     const body = JSON.stringify(voucherData);
     const requestOptions = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: body,
     };
-    console.log("body", body);
     await fetch(url, requestOptions)
       .then((response) => response.json())
       .then((data) =>
@@ -52,18 +48,15 @@ export function ClaimVoucher(): ReactElement {
     await fetch(url, requestOptions)
       .then((response) => response.json())
       .then(function (data) {
-        for (let i = 0; i < data.vouchers.length; i++) {
-          if (data.vouchers[i].code === solidityCode) {
-            if (data.vouchers[i].claimer) {
-              window.alert("Sorry, code has already been claimed.");
-            } else {
-              setVoucherData(data);
-              setVoucherCodeIndex(i);
-              setVoucherAmount((foundAmount = data.vouchers[i].amount));
-              setClaimable(true);
-            }
-            found = true;
+        if (data.code === solidityCode) {
+          if (data.claimer) {
+            window.alert("Sorry, code has already been claimed.");
+          } else {
+            setVoucherData(data);
+            setVoucherAmount((foundAmount = data.amount));
+            setClaimable(true);
           }
+          found = true;
         }
         if (!found) {
           window.alert("Unknown combination");
