@@ -1,7 +1,7 @@
 # Ethereum Voucher Scaling
 
 ## Intention
-This projects represents a tool that allows a scalable solution for web3 communities to create ETH vouchers and distribute them to their users.
+This project represents a tool that allows a scalable solution for web3 communities to create ETH vouchers and distribute them to their users.
 
 This tool streamlines the process of committing vouchers, verifying the recipient's response and sending the voucher amounts in an efficient way.
 
@@ -22,6 +22,7 @@ The off-chain code component in this sense serves as a safety mechanism so that 
 - create arbitrary amount of vouchers
 - automated voucher creation, verification and sending
 - tracking of available balances and vouchers
+- delegate operations to trusted voucher operator
 - simple front-end and back-end (simulation)
 
 ```shell
