@@ -13,6 +13,7 @@ module.exports = {
         auto: true,
         interval: 1000,
       },
+      /*
       accounts: [
         {
           privateKey:
@@ -30,6 +31,7 @@ module.exports = {
           balance: "0",
         },
       ],
+      */
     },
     ropsten: {
       url: process.env.ROPSTEN_URL || "",
