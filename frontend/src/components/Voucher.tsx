@@ -143,6 +143,7 @@ export function Voucher(): ReactElement {
   const [fundedAmount, setFundedAmount] = useState<BigNumber>();
 
   const [depositAmount, setDepositAmount] = useState<string>("");
+  const [operatorInput, setOperatorInput] = useState<string>("");
   const [accountVouchers, setAccountVouchers] = useState<TVoucher[]>([]);
 
   const [inputFields, setInputFields] = useState<InputField[]>([]);
@@ -277,7 +278,7 @@ export function Voucher(): ReactElement {
       return;
     }
   }
-  
+
   async function withdrawBalance(): Promise<void> {
     if (!voucherStoreContract) {
       // window.alert("Undefined voucherContract");
@@ -332,21 +333,17 @@ export function Voucher(): ReactElement {
             pledger: sender,
             recipient: validVouchers[i].recipient,
             send: false,
-            status: "depleted"
+            status: "depleted",
           }),
         };
         await fetch(url, requestOptions).then((response) => response.json());
       }
-
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
       );
     }
   }
-
-
-
 
   useEffect((): void => {
     if (!voucherStoreContract) {
@@ -405,6 +402,20 @@ export function Voucher(): ReactElement {
         value: ethers.utils.parseEther(depositAmount),
       });
       setFundedAmount(tx.value);
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+  }
+  async function handleSetOperator() {
+    if (!voucherStoreContract) {
+      window.alert("Undefined voucherContract");
+      return;
+    }
+    try {
+      let tx = await voucherStoreContract.setOperator(operatorInput);
+      window.alert("Operator has been set!");
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -508,6 +519,11 @@ export function Voucher(): ReactElement {
     setDepositAmount(event.target.value);
   }
 
+  function handleOperatorChange(event: ChangeEvent<HTMLInputElement>): void {
+    event.preventDefault();
+    setOperatorInput(event.target.value);
+  }
+
   return (
     <>
       <StyledDeployContractButton
@@ -542,12 +558,6 @@ export function Voucher(): ReactElement {
         </div>
 
         {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
-        {/* <div></div>
-        <StyledLabel></StyledLabel>
-        <div>
-          {"greeting" ? "greeting" : <em>{`<Contract not yet deployed>`}</em>}
-        </div> */}
-        {/* empty placeholder div below to provide empty first row, 3rd col div for a 2x3 grid */}
         <div></div>
 
         <StyledLabel htmlFor="depositAmount">Set deposit amount</StyledLabel>
@@ -565,6 +575,24 @@ export function Voucher(): ReactElement {
             borderColor: !active || !voucherStoreContract ? "unset" : "blue",
           }}
           onClick={handleDeposit}
+        >
+          Submit
+        </StyledButton>
+        <StyledLabel htmlFor="operatorAdress">Set an operator</StyledLabel>
+        <StyledInput
+          id="depositAmoperatorAdressount"
+          type="text"
+          onChange={handleOperatorChange}
+          placeholder="Operator address (0x...)"
+        ></StyledInput>
+        <StyledButton
+          disabled={!active || !voucherStoreContract ? true : false}
+          style={{
+            cursor:
+              !active || !voucherStoreContract ? "not-allowed" : "pointer",
+            borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+          }}
+          onClick={handleSetOperator}
         >
           Submit
         </StyledButton>
