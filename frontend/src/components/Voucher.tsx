@@ -60,6 +60,7 @@ type TVoucher = {
   recipient?: string;
   send?: boolean;
   id: string;
+  status?: string;
 };
 
 interface TableProps {
@@ -69,6 +70,7 @@ interface TableProps {
     recipient?: string;
     send?: boolean;
     id: string;
+    status?: string;
   }[];
 }
 
@@ -103,8 +105,8 @@ const VoucherTable: React.FC<TableProps> = ({ data }) => {
           <tr key={index}>
             <td>{item.id}</td>
             {/* TODO: truncate */}
-            <td>{item.code}</td>
-            <td>{item.amount}</td>
+            <td>{item.code.replace(/0+$/, "")}</td>
+            <td>{ethers.utils.formatEther(item.amount) + " ETH"}</td>
             <td>{item.recipient ? item.recipient : "Not claimed"}</td>
             <td>{item.send ? item.send.toString() : "false"}</td>
             <td>
@@ -188,6 +190,7 @@ export function Voucher(): ReactElement {
           value={field.value}
           onChange={(e) => handleInputChange(index, e.target.valueAsNumber)}
         />
+        <> ETH </>
         <StyledButton onClick={() => handleRemoveFields(index)}>
           Remove
         </StyledButton>
@@ -210,8 +213,14 @@ export function Voucher(): ReactElement {
       })
       .then((data) => {
         const filteredData = data.filter(
-          (a: { pledger: string | undefined; contractAddress: string }) =>
-            a.pledger == signerAddress && a.contractAddress == initContractAddr
+          (a: {
+            status: string | undefined;
+            pledger: string | undefined;
+            contractAddress: string;
+          }) =>
+            a.pledger == signerAddress &&
+            a.contractAddress == initContractAddr &&
+            a.status !== "depleted"
         );
         setAccountVouchers(filteredData);
       });
@@ -267,7 +276,8 @@ export function Voucher(): ReactElement {
     try {
       const pledger = signer ? await signer.getAddress() : "";
       let tx = await voucherStoreContract.viewPledger(pledger);
-      setFundedAmount(tx.balance);
+      const new_balance = BigNumber.from("0");
+      setFundedAmount(new_balance);
     } catch (error: any) {
       window.alert(
         "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -279,14 +289,14 @@ export function Voucher(): ReactElement {
     }
   }
 
-  async function withdrawBalance(): Promise<void> {
+  async function handleWithdrawBalance(): Promise<void> {
     if (!voucherStoreContract) {
       // window.alert("Undefined voucherContract");
       return;
     }
     try {
       const pledger = signer ? await signer.getAddress() : "";
-      let withdraw_tx = await voucherStoreContract.withdrawBalance(pledger);
+      let withdraw_tx = await voucherStoreContract.withdrawBalance();
       let tx = await voucherStoreContract.viewPledger(pledger);
       setFundedAmount(tx.balance);
     } catch (error: any) {
@@ -305,9 +315,7 @@ export function Voucher(): ReactElement {
       window.alert("Undefined voucherContract");
       return;
     }
-    let validVouchers = accountVouchers.filter(
-      (a) => a.recipient && a.send !== true
-    );
+    let validVouchers = accountVouchers.filter((a) => a.send !== true);
 
     if (!validVouchers) {
       window.alert("No valid vouchers found.");
@@ -381,7 +389,8 @@ export function Voucher(): ReactElement {
           `Voucher store deployed to: ${voucherStoreContract.address}`
         );
 
-        setVoucherStoreContractAddr(voucherStoreContract.address);
+        // setVoucherStoreContractAddr(voucherStoreContract.address);
+        window.location.href = "?contract=" + voucherStoreContract.address;
       } catch (error: any) {
         window.alert(
           "Error!" + (error && error.message ? `\n\n${error.message}` : "")
@@ -548,7 +557,7 @@ export function Voucher(): ReactElement {
         </div>
         <div></div>
 
-        <StyledLabel>Contract amount</StyledLabel>
+        <StyledLabel>Your available funds</StyledLabel>
         <div>
           {fundedAmount ? (
             ethers.utils.formatEther(fundedAmount) + " ETH"
@@ -661,7 +670,7 @@ export function Voucher(): ReactElement {
           cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
           borderColor: !active || !voucherStoreContract ? "unset" : "blue",
         }}
-        onClick={withdrawBalance}
+        onClick={handleWithdrawBalance}
       >
         Withdraw Funds
       </StyledDeployContractButton>

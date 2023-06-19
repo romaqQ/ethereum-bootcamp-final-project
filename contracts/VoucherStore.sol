@@ -71,9 +71,9 @@ contract VoucherStore is AccessControl, Ownable {
     function withdrawBalance() public onlyPledger {
         uint256 balance = pledgers[msg.sender].balance;
         require(balance > 0, "Balance must be greater than 0");
-        pledgers[msg.sender].balance = 0;
         (bool sent, ) = payable(msg.sender).call{value:balance}("");
         require(sent, "Voucher transfer failed");
+        pledgers[msg.sender].balance = 0;
     }
 
 

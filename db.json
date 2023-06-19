@@ -1,34 +1,3 @@
 {
-  "data": [
-    {
-      "id": "HwSoJNgK",
-      "code": "0x83eb83b500000000000000000000000000000000000000000000000000000000",
-      "amount": "1000000000000000000",
-      "contractAddress": "0x19651D7d4892803Cc08cA62897C85640406b2075",
-      "pledger": "0x2CffC0D43Ebf0E7d0e684499eAC78438106e6ca7"
-    },
-    {
-      "id": "lJiAwNdM",
-      "code": "0x3f00c4f300000000000000000000000000000000000000000000000000000000",
-      "amount": "1000000000000000000",
-      "contractAddress": "0xF1221C54d4a7B7E5318b9F5944F57320B826239B",
-      "pledger": "0x2CffC0D43Ebf0E7d0e684499eAC78438106e6ca7",
-      "recipient": "0x2CffC0D43Ebf0E7d0e684499eAC78438106e6ca7",
-      "send": true
-    },
-    {
-      "id": "EKcuxqRS",
-      "code": "0xa400a30800000000000000000000000000000000000000000000000000000000",
-      "amount": "2000000000000000000",
-      "contractAddress": "0xF1221C54d4a7B7E5318b9F5944F57320B826239B",
-      "pledger": "0x2CffC0D43Ebf0E7d0e684499eAC78438106e6ca7"
-    },
-    {
-      "id": "eefAzs8Z",
-      "code": "0x307f759300000000000000000000000000000000000000000000000000000000",
-      "amount": "4000000000000000000",
-      "contractAddress": "0xF1221C54d4a7B7E5318b9F5944F57320B826239B",
-      "pledger": "0x2CffC0D43Ebf0E7d0e684499eAC78438106e6ca7"
-    }
-  ]
+  "data": []
 }
