@@ -13,25 +13,6 @@ module.exports = {
         auto: true,
         interval: 1000,
       },
-      /*
-      accounts: [
-        {
-          privateKey:
-            "7fcb05201b117c0019e2cfaed9db96bdb2ac468c8374e1412ab4b8bc1a17d965",
-          balance: "10000000000000000000000",
-        },
-        {
-          privateKey:
-            "08f7f13eaccdde3d9d02f206bacd901e88a840f4ee53ea58f90d5a78c014fb5e",
-          balance: "0",
-        },
-        {
-          privateKey:
-            "ba81a4d4617f6e9bac5baa4ffb81e1f8d3174849f94ca501840dfce1cd242e8a",
-          balance: "0",
-        },
-      ],
-      */
     },
     ropsten: {
       url: process.env.ROPSTEN_URL || "",
