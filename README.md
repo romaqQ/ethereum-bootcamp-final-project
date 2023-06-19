@@ -1,4 +1,4 @@
-# Ethereum Voucher Scaling
+# Ethereum Voucher Distribution System
 
 ## Intention
 This project represents a tool that allows a scalable solution for web3 communities to create ETH vouchers and distribute them to their users.
