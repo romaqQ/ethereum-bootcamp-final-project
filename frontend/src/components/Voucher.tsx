@@ -90,11 +90,11 @@ const VoucherTable: React.FC<TableProps> = ({ data }) => {
     <table>
       <thead>
         <tr>
-          <th>F-Code</th>
-          <th>S-Code</th>
+          <th>B-Code</th>
+          <th>OC-Code</th>
           <th>Amount</th>
           <th>Recipient</th>
-          <th>Send?</th>
+          <th>Sent</th>
           <th>Link</th>
         </tr>
       </thead>
@@ -277,6 +277,76 @@ export function Voucher(): ReactElement {
       return;
     }
   }
+  
+  async function withdrawBalance(): Promise<void> {
+    if (!voucherStoreContract) {
+      // window.alert("Undefined voucherContract");
+      return;
+    }
+    try {
+      const pledger = signer ? await signer.getAddress() : "";
+      let withdraw_tx = await voucherStoreContract.withdrawBalance(pledger);
+      let tx = await voucherStoreContract.viewPledger(pledger);
+      setFundedAmount(tx.balance);
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+
+    if (!voucherStoreContract || !signer) {
+      return;
+    }
+  }
+
+  async function depleteVouchers() {
+    if (!voucherStoreContract) {
+      window.alert("Undefined voucherContract");
+      return;
+    }
+    let validVouchers = accountVouchers.filter(
+      (a) => a.recipient && a.send !== true
+    );
+
+    if (!validVouchers) {
+      window.alert("No valid vouchers found.");
+      return;
+    }
+
+    try {
+      let codes: string[] = validVouchers.map((a) => a.code);
+
+      let tx = await voucherStoreContract.sendVouchers(codes);
+
+      for (let i = 0; i < validVouchers.length; i++) {
+        let url = "http://localhost:3004/data/" + validVouchers[i].id;
+        const sender = signer ? await signer.getAddress() : "";
+        const requestOptions = {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: validVouchers[i].id,
+            code: validVouchers[i].code,
+            amount: validVouchers[i].amount,
+            contractAddress: voucherStoreContractAddr,
+            pledger: sender,
+            recipient: validVouchers[i].recipient,
+            send: false,
+            status: "depleted"
+          }),
+        };
+        await fetch(url, requestOptions).then((response) => response.json());
+      }
+
+    } catch (error: any) {
+      window.alert(
+        "Error!" + (error && error.message ? `\n\n${error.message}` : "")
+      );
+    }
+  }
+
+
+
 
   useEffect((): void => {
     if (!voucherStoreContract) {
@@ -543,6 +613,31 @@ export function Voucher(): ReactElement {
       >
         Send Vouchers
       </StyledDeployContractButton>
+
+      <SectionDivider />
+      <StyledDeployContractButton
+        disabled={!active || !voucherStoreContract ? true : false}
+        style={{
+          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
+          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+        }}
+        onClick={depleteVouchers}
+      >
+        Reclaim Vouchers
+      </StyledDeployContractButton>
+
+      <SectionDivider />
+      <StyledDeployContractButton
+        disabled={!active || !voucherStoreContract ? true : false}
+        style={{
+          cursor: !active || !voucherStoreContract ? "not-allowed" : "pointer",
+          borderColor: !active || !voucherStoreContract ? "unset" : "blue",
+        }}
+        onClick={withdrawBalance}
+      >
+        Withdraw Funds
+      </StyledDeployContractButton>
+
       {/* <SectionDivider />
       <StyledDeployContractButton
         disabled={!active || !voucherStoreContract ? true : false}
