@@ -316,7 +316,7 @@ export function Voucher(): ReactElement {
     try {
       let codes: string[] = validVouchers.map((a) => a.code);
 
-      let tx = await voucherStoreContract.sendVouchers(codes);
+      let tx = await voucherStoreContract.reclaimVouchers(codes);
 
       for (let i = 0; i < validVouchers.length; i++) {
         let url = "http://localhost:3004/data/" + validVouchers[i].id;
